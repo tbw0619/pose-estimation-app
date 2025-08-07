@@ -4,6 +4,22 @@ import cv2
 import os
 import numpy as np
 
+# MediaPipe インポート（クラウド環境対応）
+try:
+    import mediapipe as mp
+    mp_pose = mp.solutions.pose
+    mp_hands = mp.solutions.hands
+    mp_drawing = mp.solutions.drawing_utils
+    mp_styles = mp.solutions.drawing_styles
+    MEDIAPIPE_AVAILABLE = True
+except ImportError as e:
+    st.error(f"MediaPipeのインポートに失敗しました: {e}")
+    st.info("requirements.txtにmediapipeが含まれていることを確認してください。")
+    MEDIAPIPE_AVAILABLE = False
+except Exception as e:
+    st.error(f"MediaPipe初期化エラー: {e}")
+    MEDIAPIPE_AVAILABLE = False
+
 # Streamlit設定
 st.set_page_config(
     page_title="姿勢推定アプリ - MediaPipe × Streamlit",
@@ -52,14 +68,14 @@ landmark_size = st.sidebar.slider("関節点サイズ", 1, 10, 3)
 connection_thickness = st.sidebar.slider("骨格線の太さ", 1, 10, 2)
 
 try:
-    import mediapipe as mp
-    # MediaPipe 初期化
-    mp_drawing = mp.solutions.drawing_utils
-    mp_pose = mp.solutions.pose
-    mp_face_mesh = mp.solutions.face_mesh  # 顔メッシュ（オプション）
-    mp_hands = mp.solutions.hands  # 手の検出追加
-    mediapipe_available = True
-    st.success("✅ MediaPipe が正常に読み込まれました（YOLO7スタイル姿勢推定）")
+    if MEDIAPIPE_AVAILABLE:
+        # MediaPipe 初期化
+        mp_drawing = mp.solutions.drawing_utils
+        mp_face_mesh = mp.solutions.face_mesh  # 顔メッシュ（オプション）
+        mediapipe_available = True
+        st.success("✅ MediaPipe が正常に読み込まれました（YOLO7スタイル姿勢推定）")
+    else:
+        raise ImportError("MediaPipe is not available")
 except ImportError as e:
     st.error(f"❌ MediaPipe の読み込みに失敗しました: {e}")
     mediapipe_available = False
@@ -277,22 +293,28 @@ if uploaded_file is not None and mediapipe_available:
         # 動画表示エリア
         video_placeholder = st.empty()
         
-        # MediaPipe設定（姿勢中心で軽量化）
-        with mp_pose.Pose(
-            static_image_mode=False,
-            model_complexity=model_complexity,  # ユーザー設定
-            smooth_landmarks=True,  # ランドマークの平滑化
-            enable_segmentation=False,  # セグメンテーション無効化（軽量化）
-            smooth_segmentation=False,  # セグメンテーション平滑化無効
-            min_detection_confidence=detection_confidence,  # ユーザー設定
-            min_tracking_confidence=tracking_confidence  # ユーザー設定
-        ) as pose, \
-        mp_hands.Hands(
-            static_image_mode=False,
-            max_num_hands=2,  # 両手検出
-            min_detection_confidence=detection_confidence * 0.8,  # 手の検出は少し緩く
-            min_tracking_confidence=tracking_confidence * 0.8
-        ) as hands:
+        # MediaPipe設定（クラウド環境対応で軽量化）
+        # 軽量モデルを強制使用（クラウド環境での権限問題回避）
+        pose_config = {
+            'static_image_mode': False,
+            'model_complexity': 0,  # 軽量モデル強制使用
+            'smooth_landmarks': True,
+            'enable_segmentation': False,
+            'smooth_segmentation': False,
+            'min_detection_confidence': max(0.5, detection_confidence),  # 最低0.5
+            'min_tracking_confidence': max(0.5, tracking_confidence)  # 最低0.5
+        }
+        
+        hands_config = {
+            'static_image_mode': False,
+            'max_num_hands': 2,
+            'model_complexity': 0,  # 軽量モデル強制使用
+            'min_detection_confidence': max(0.5, detection_confidence),
+            'min_tracking_confidence': max(0.5, tracking_confidence)
+        }
+        
+        with mp_pose.Pose(**pose_config) as pose, \
+        mp_hands.Hands(**hands_config) as hands:
             
             progress_bar.progress(30)
             status_text.text("🏃 姿勢推定処理中...")
