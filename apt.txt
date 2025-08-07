@@ -7,3 +7,9 @@ libgomp1
 libgstreamer1.0-0
 libgstreamer-plugins-base1.0-0
 ffmpeg
+libfontconfig1
+libice6
+libxcomposite1
+libxdamage1
+libxfixes3
+libxrandr2

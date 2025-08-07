@@ -1,6 +1,7 @@
 import streamlit as st
 import tempfile
 import os
+import sys
 import numpy as np
 import time
 
@@ -28,6 +29,7 @@ try:
     mp_drawing = mp.solutions.drawing_utils
     mp_styles = mp.solutions.drawing_styles
     MEDIAPIPE_AVAILABLE = True
+    st.success("✅ MediaPipe インポート成功")
 except ImportError as e:
     st.error(f"MediaPipeのインポートに失敗しました: {e}")
     st.info("requirements.txtにmediapipeが含まれていることを確認してください。")
@@ -35,6 +37,18 @@ except ImportError as e:
 except Exception as e:
     st.error(f"MediaPipe初期化エラー: {e}")
     MEDIAPIPE_AVAILABLE = False
+
+# システム情報表示（デバッグ用）
+with st.expander("🔧 システム情報", expanded=False):
+    st.write(f"Python バージョン: {sys.version}")
+    st.write(f"OpenCV 利用可能: {CV2_AVAILABLE}")
+    st.write(f"MediaPipe 利用可能: {MEDIAPIPE_AVAILABLE}")
+    if CV2_AVAILABLE:
+        st.write(f"OpenCV バージョン: {cv2.__version__}")
+    if MEDIAPIPE_AVAILABLE:
+        st.write(f"MediaPipe バージョン: {mp.__version__}")
+    st.write(f"現在のディレクトリ: {os.getcwd()}")
+    st.write(f"環境変数 DISPLAY: {os.environ.get('DISPLAY', 'Not set')}")
 
 # Streamlit設定
 st.set_page_config(

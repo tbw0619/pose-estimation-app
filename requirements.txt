@@ -1,5 +1,5 @@
 # Streamlit Core
-streamlit>=1.37.0
+streamlit==1.37.1
 
 # Computer Vision (Streamlit Cloud最適化)
 opencv-python-headless==4.7.1.72
@@ -8,5 +8,5 @@ mediapipe==0.10.9
 # Data Processing
 numpy==1.24.3
 
-# 追加の画像処理サポート
-Pillow>=9.0.0
+# 画像処理サポート
+Pillow==9.5.0
