@@ -375,10 +375,45 @@ if uploaded_file is not None and mediapipe_available:
             temp_dir = tempfile.mkdtemp()
             os.environ['MEDIAPIPE_DISABLE_GPU'] = '1'
             os.environ['GLOG_logtostderr'] = '1'
+            # MediaPipeモデルディレクトリを一時ディレクトリに設定
+            os.environ['MEDIAPIPE_CACHE_DIR'] = temp_dir
+            os.environ['XDG_CACHE_HOME'] = temp_dir
+            os.environ['HOME'] = temp_dir
             
-            # MediaPipe初期化
-            pose = mp_pose.Pose(**pose_config)
-            hands = mp_hands.Hands(**hands_config)
+            # 追加のキャッシュ制御
+            import stat
+            os.chmod(temp_dir, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+            
+            # モデル複雑度を0に強制（最軽量）
+            safe_pose_config = pose_config.copy()
+            safe_pose_config['model_complexity'] = 0
+            safe_hands_config = hands_config.copy()
+            safe_hands_config['model_complexity'] = 0
+            
+            # MediaPipe初期化（段階的に試行）
+            pose = None
+            hands = None
+            
+            # まずPoseのみ試行
+            try:
+                status_text.text("🤖 Pose モデル初期化中...")
+                pose = mp_pose.Pose(**safe_pose_config)
+                st.success("✅ Pose モデル初期化成功")
+            except Exception as pose_error:
+                st.error(f"❌ Pose初期化失敗: {pose_error}")
+                st.info("💡 代替処理でフレーム表示のみ実行します")
+                pose = None
+                
+            # 次にHandsを試行（失敗しても続行）
+            if pose:
+                try:
+                    status_text.text("🤖 Hands モデル初期化中...")
+                    hands = mp_hands.Hands(**safe_hands_config)
+                    st.success("✅ Hands モデル初期化成功")
+                except Exception as hands_error:
+                    st.warning(f"⚠️ Hands初期化失敗: {hands_error}")
+                    st.info("💡 Poseのみで処理を続行します")
+                    hands = None
             
             progress_bar.progress(30)
             status_text.text("🏃 姿勢推定処理中...")
@@ -400,17 +435,37 @@ if uploaded_file is not None and mediapipe_available:
                 # BGRからRGBに変換
                 rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
                 
-                # 姿勢推定
-                pose_results = pose.process(rgb)
-                hands_results = hands.process(rgb)
+                # 姿勢推定（安全な処理）
+                pose_results = None
+                hands_results = None
                 
-                # 描画
-                annotated_frame = draw_pose_landmarks(
-                    frame_resized, pose_results, None, hands_results, 
-                    mp_pose, mp_face_mesh, mp_hands, mp_drawing, 
-                    draw_landmarks, draw_connections, draw_face, draw_hands,
-                    landmark_size, connection_thickness
-                )
+                if pose:
+                    try:
+                        pose_results = pose.process(rgb)
+                    except Exception as pose_proc_error:
+                        st.error(f"Pose処理エラー: {pose_proc_error}")
+                        pose_results = None
+                        
+                if hands:
+                    try:
+                        hands_results = hands.process(rgb)
+                    except Exception as hands_proc_error:
+                        st.warning(f"Hands処理エラー: {hands_proc_error}")
+                        hands_results = None
+                
+                # 描画（MediaPipeが失敗した場合は元フレームを表示）
+                if pose_results or hands_results:
+                    annotated_frame = draw_pose_landmarks(
+                        frame_resized, pose_results, None, hands_results, 
+                        mp_pose, mp_face_mesh, mp_hands, mp_drawing, 
+                        draw_landmarks, draw_connections, draw_face, draw_hands,
+                        landmark_size, connection_thickness
+                    )
+                else:
+                    # MediaPipeが使用できない場合は元のフレームを表示
+                    annotated_frame = frame_resized
+                    cv2.putText(annotated_frame, "MediaPipe Unavailable - Showing Original Frame", 
+                              (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                 
                 # フレームカウントと進捗更新
                 frame_count += 1
