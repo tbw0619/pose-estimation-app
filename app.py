@@ -9,6 +9,8 @@ import time
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '0'
 os.environ['OPENCV_IO_ENABLE_JASPER'] = '0'
 os.environ['OPENCV_VIDEOIO_PRIORITY_MSMF'] = '0'
+# Streamlit Cloud環境変数設定
+os.environ['MPLCONFIGDIR'] = '/tmp'
 
 # OpenCV安全インポート（Streamlit Cloud対応）
 try:
@@ -16,6 +18,7 @@ try:
     # OpenCV設定（ヘッドレス環境用）
     cv2.setUseOptimized(True)
     CV2_AVAILABLE = True
+    st.success("✅ OpenCV インポート成功")
 except ImportError as e:
     st.error(f"OpenCVのインポートに失敗しました: {e}")
     st.info("requirements.txtにopencv-python-headlessが含まれていることを確認してください。")
@@ -109,31 +112,13 @@ if not MEDIAPIPE_AVAILABLE:
 # MediaPipe初期化（セッションステート使用）
 @st.cache_resource
 def initialize_mediapipe():
-    """MediaPipeモデルを初期化（キャッシュ機能付き）"""
+    """MediaPipeモデルを初期化（軽量版）"""
     try:
         mp_drawing = mp.solutions.drawing_utils
         mp_face_mesh = mp.solutions.face_mesh
         
-        # 軽量モデルで事前初期化を試行
-        with mp_pose.Pose(
-            static_image_mode=True,
-            model_complexity=0,
-            enable_segmentation=False,
-            min_detection_confidence=0.5
-        ) as pose_test:
-            # ダミー画像で初期化テスト
-            dummy_image = np.zeros((100, 100, 3), dtype=np.uint8)
-            pose_test.process(dummy_image)
-        
-        with mp_hands.Hands(
-            static_image_mode=True,
-            model_complexity=0,
-            max_num_hands=2,
-            min_detection_confidence=0.5
-        ) as hands_test:
-            # ダミー画像で初期化テスト
-            hands_test.process(dummy_image)
-            
+        # 軽量初期化のみ（事前テストは無効化）
+        st.info("MediaPipe軽量初期化中...")
         return mp_drawing, mp_face_mesh, True
         
     except Exception as e:
