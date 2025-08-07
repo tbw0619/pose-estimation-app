@@ -366,89 +366,104 @@ if uploaded_file is not None and mediapipe_available:
             'min_tracking_confidence': max(0.5, tracking_confidence)
         }
         
-        # MediaPipe処理をtry-catchでラップ
+        # MediaPipe処理（権限エラー対応）
         try:
-            with mp_pose.Pose(**pose_config) as pose, \
-            mp_hands.Hands(**hands_config) as hands:
+            status_text.text("🤖 MediaPipe初期化中（権限エラー対応）...")
+            
+            # 環境変数でMediaPipeのキャッシュディレクトリを設定
+            import tempfile
+            temp_dir = tempfile.mkdtemp()
+            os.environ['MEDIAPIPE_DISABLE_GPU'] = '1'
+            os.environ['GLOG_logtostderr'] = '1'
+            
+            # MediaPipe初期化
+            pose = mp_pose.Pose(**pose_config)
+            hands = mp_hands.Hands(**hands_config)
+            
+            progress_bar.progress(30)
+            status_text.text("🏃 姿勢推定処理中...")
+            
+            frame_count = 0
+            processing_times = []
+            
+            # フレームごとの処理ループ
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
                 
-                progress_bar.progress(30)
-                status_text.text("🏃 姿勢推定処理中...")
+                start_time = time.time()
                 
-                frame_count = 0
-                processing_times = []
+                # フレームを指定解像度にリサイズ
+                frame_resized = cv2.resize(frame, (target_width, target_height))
                 
-                # フレームごとの処理ループ
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    
-                    start_time = time.time()
-                    
-                    # フレームを指定解像度にリサイズ
-                    frame_resized = cv2.resize(frame, (target_width, target_height))
-                    
-                    # BGRからRGBに変換
-                    rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-                    
-                    # 姿勢推定
-                    pose_results = pose.process(rgb)
-                    hands_results = hands.process(rgb)
-                    
-                    # 描画
-                    annotated_frame = draw_pose_landmarks(
-                        frame_resized, pose_results, None, hands_results, 
-                        mp_pose, mp_face_mesh, mp_hands, mp_drawing, 
-                        draw_landmarks, draw_connections, draw_face, draw_hands,
-                        landmark_size, connection_thickness
-                    )
-                    
-                    # フレームカウントと進捗更新
-                    frame_count += 1
-                    progress = min(30 + (frame_count / total_frames) * 60, 90)
-                    progress_bar.progress(int(progress))
-                    
-                    # 動画表示更新（一定間隔で）
-                    if frame_count % max(1, total_frames // 50) == 0:  # 最大50回更新
-                        video_placeholder.image(annotated_frame, channels="RGB", use_column_width=True)
-                    
-                    # 処理時間計測
-                    processing_time = time.time() - start_time
-                    processing_times.append(processing_time)
-                    
-                    # ステータス更新（100フレームごと）
-                    if frame_count % 100 == 0:
-                        avg_time = np.mean(processing_times[-100:]) * 1000
-                        status_text.text(f"🏃 処理中... {frame_count}/{total_frames} frames ({avg_time:.1f}ms/frame)")
+                # BGRからRGBに変換
+                rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
                 
-                # 最終フレームを表示
-                if 'annotated_frame' in locals():
+                # 姿勢推定
+                pose_results = pose.process(rgb)
+                hands_results = hands.process(rgb)
+                
+                # 描画
+                annotated_frame = draw_pose_landmarks(
+                    frame_resized, pose_results, None, hands_results, 
+                    mp_pose, mp_face_mesh, mp_hands, mp_drawing, 
+                    draw_landmarks, draw_connections, draw_face, draw_hands,
+                    landmark_size, connection_thickness
+                )
+                
+                # フレームカウントと進捗更新
+                frame_count += 1
+                progress = min(30 + (frame_count / total_frames) * 60, 90)
+                progress_bar.progress(int(progress))
+                
+                # 動画表示更新（一定間隔で）
+                if frame_count % max(1, total_frames // 50) == 0:  # 最大50回更新
                     video_placeholder.image(annotated_frame, channels="RGB", use_column_width=True)
                 
-                cap.release()
-                progress_bar.progress(100)
+                # 処理時間計測
+                processing_time = time.time() - start_time
+                processing_times.append(processing_time)
                 
-                # 統計計算
-                avg_processing_time = np.mean(processing_times) * 1000
-                status_text.text(f"✅ 処理完了！平均処理時間: {avg_processing_time:.1f}ms/frame")
-                
-                # 統計情報表示
-                st.success("🎉 姿勢推定が完了しました！")
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("処理フレーム数", f"{frame_count}")
-                with col2:
-                    st.metric("平均処理時間", f"{avg_processing_time:.1f}ms")
-                with col3:
-                    estimated_fps = 1000 / avg_processing_time if avg_processing_time > 0 else 0
-                    st.metric("推定リアルタイム性能", f"{estimated_fps:.1f} FPS")
-                
-                # 一時ファイルを削除
-                try:
-                    os.unlink(video_path)
-                except:
-                    pass
+                # ステータス更新（100フレームごと）
+                if frame_count % 100 == 0:
+                    avg_time = np.mean(processing_times[-100:]) * 1000
+                    status_text.text(f"🏃 処理中... {frame_count}/{total_frames} frames ({avg_time:.1f}ms/frame)")
+            
+            # 最終フレームを表示
+            if 'annotated_frame' in locals():
+                video_placeholder.image(annotated_frame, channels="RGB", use_column_width=True)
+            
+            cap.release()
+            progress_bar.progress(100)
+            
+            # 統計計算
+            avg_processing_time = np.mean(processing_times) * 1000
+            status_text.text(f"✅ 処理完了！平均処理時間: {avg_processing_time:.1f}ms/frame")
+            
+            # 統計情報表示
+            st.success("🎉 姿勢推定が完了しました！")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("処理フレーム数", f"{frame_count}")
+            with col2:
+                st.metric("平均処理時間", f"{avg_processing_time:.1f}ms")
+            with col3:
+                estimated_fps = 1000 / avg_processing_time if avg_processing_time > 0 else 0
+                st.metric("推定リアルタイム性能", f"{estimated_fps:.1f} FPS")
+            
+            # MediaPipeリソースの解放
+            if pose:
+                pose.close()
+            if hands:
+                hands.close()
+            
+            # 一時ファイルを削除
+            try:
+                os.unlink(video_path)
+            except:
+                pass
                     
         except Exception as e:
             st.error(f"❌ 動画処理中にエラーが発生しました: {e}")
