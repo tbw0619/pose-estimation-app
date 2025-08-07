@@ -6,9 +6,23 @@ import numpy as np
 
 # Streamlit設定
 st.set_page_config(
-    page_title="姿勢推定アプリ",
+    page_title="姿勢推定アプリ - MediaPipe × Streamlit",
     page_icon="🧍",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://github.com/tbw0619/pose-estimation-app',
+        'Report a bug': 'https://github.com/tbw0619/pose-estimation-app/issues',
+        'About': """
+        # 🧍 姿勢推定アプリ
+        
+        YOLO7スタイルの高精度姿勢推定アプリケーション
+        
+        **開発者**: tbw0619  
+        **技術**: MediaPipe × Streamlit  
+        **GitHub**: https://github.com/tbw0619/pose-estimation-app
+        """
+    }
 )
 
 # タイトル
