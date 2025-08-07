@@ -4,9 +4,16 @@ import os
 import numpy as np
 import time
 
+# OpenCV/MediaPipe環境設定（OpenGL無効化）
+os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '0'
+os.environ['OPENCV_IO_ENABLE_JASPER'] = '0'
+os.environ['OPENCV_VIDEOIO_PRIORITY_MSMF'] = '0'
+
 # OpenCV安全インポート（Streamlit Cloud対応）
 try:
     import cv2
+    # OpenCV設定（ヘッドレス環境用）
+    cv2.setUseOptimized(True)
     CV2_AVAILABLE = True
 except ImportError as e:
     st.error(f"OpenCVのインポートに失敗しました: {e}")
