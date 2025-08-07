@@ -2,6 +2,7 @@ import streamlit as st
 import tempfile
 import os
 import numpy as np
+import time
 
 # OpenCV安全インポート（Streamlit Cloud対応）
 try:
@@ -84,21 +85,50 @@ if not MEDIAPIPE_AVAILABLE:
     st.error("❌ MediaPipeが利用できません。アプリを正常に動作させるためにはMediaPipeが必要です。")
     st.stop()
 
-try:
-    if MEDIAPIPE_AVAILABLE:
-        # MediaPipe 初期化
+# MediaPipe初期化（セッションステート使用）
+@st.cache_resource
+def initialize_mediapipe():
+    """MediaPipeモデルを初期化（キャッシュ機能付き）"""
+    try:
         mp_drawing = mp.solutions.drawing_utils
-        mp_face_mesh = mp.solutions.face_mesh  # 顔メッシュ（オプション）
-        mediapipe_available = True
+        mp_face_mesh = mp.solutions.face_mesh
+        
+        # 軽量モデルで事前初期化を試行
+        with mp_pose.Pose(
+            static_image_mode=True,
+            model_complexity=0,
+            enable_segmentation=False,
+            min_detection_confidence=0.5
+        ) as pose_test:
+            # ダミー画像で初期化テスト
+            dummy_image = np.zeros((100, 100, 3), dtype=np.uint8)
+            pose_test.process(dummy_image)
+        
+        with mp_hands.Hands(
+            static_image_mode=True,
+            model_complexity=0,
+            max_num_hands=2,
+            min_detection_confidence=0.5
+        ) as hands_test:
+            # ダミー画像で初期化テスト
+            hands_test.process(dummy_image)
+            
+        return mp_drawing, mp_face_mesh, True
+        
+    except Exception as e:
+        st.error(f"MediaPipe初期化エラー: {str(e)}")
+        return None, None, False
+
+try:
+    mp_drawing, mp_face_mesh, mediapipe_available = initialize_mediapipe()
+    if mediapipe_available:
         st.success("✅ MediaPipe が正常に読み込まれました（YOLO7スタイル姿勢推定）")
     else:
-        raise ImportError("MediaPipe is not available")
-except ImportError as e:
-    st.error(f"❌ MediaPipe の読み込みに失敗しました: {e}")
-    mediapipe_available = False
+        st.error("❌ MediaPipe の初期化に失敗しました")
+        st.stop()
 except Exception as e:
     st.error(f"❌ MediaPipe の初期化中にエラーが発生しました: {e}")
-    mediapipe_available = False
+    st.stop()
 
 # ファイルアップロード設定の説明
 st.info("📝 対応ファイル形式: MP4, MOV, AVI（サイズ制限なし - 大きなファイルは処理に時間がかかります）")
@@ -330,108 +360,106 @@ if uploaded_file is not None and mediapipe_available:
             'min_tracking_confidence': max(0.5, tracking_confidence)
         }
         
-        with mp_pose.Pose(**pose_config) as pose, \
-        mp_hands.Hands(**hands_config) as hands:
-            
-            progress_bar.progress(30)
-            status_text.text("🏃 姿勢推定処理中...")
-            
-            frame_count = 0
-            processing_times = []
-            
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                
-                frame_count += 1
-                
-                # フレーム処理開始時間
-                import time
-                start_time = time.time()
-                
-                # フレームリサイズ（アスペクト比維持）
-                if (target_width, target_height) != (original_width, original_height):
-                    frame = cv2.resize(frame, (target_width, target_height))
-                
-                # RGBに変換（MediaPipe用）
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # 姿勢と手の推定実行（顔メッシュは使用しない）
-                pose_results = pose.process(rgb)
-                hands_results = hands.process(rgb)
-                
-                # YOLO7スタイルの描画（顔メッシュなし）
-                frame = draw_pose_landmarks(
-                    frame, pose_results, None, hands_results,
-                    mp_pose, mp_face_mesh, mp_hands, mp_drawing, 
-                    draw_landmarks, draw_connections, draw_face, draw_hands,
-                    landmark_size, connection_thickness
-                )
-                
-                # 処理時間計算
-                processing_time = time.time() - start_time
-                processing_times.append(processing_time)
-                
-                # 情報オーバーレイ
-                info_text = f"Frame: {frame_count}/{total_frames} | Processing: {processing_time*1000:.1f}ms"
-                cv2.putText(frame, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                
-                # 検出状態表示
-                detection_status = []
-                if pose_results.pose_landmarks:
-                    detection_status.append("POSE")
-                if hands_results.multi_hand_landmarks:
-                    detection_status.append(f"HANDS({len(hands_results.multi_hand_landmarks)})")
-                
-                if detection_status:
-                    status_text_display = "DETECTED: " + " + ".join(detection_status)
-                    cv2.putText(frame, status_text_display, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                else:
-                    cv2.putText(frame, "NO DETECTION", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                
-                # フレーム表示
-                video_placeholder.image(frame, channels="BGR", use_column_width=True)
-                
-                # プログレス更新（10フレームごと）
-                if frame_count % max(1, total_frames // 50) == 0:
-                    progress = 30 + int((frame_count / total_frames) * 60)
-                    progress_bar.progress(min(progress, 90))
-                    
-                    # 推定処理速度表示
-                    avg_processing_time = np.mean(processing_times[-10:]) * 1000
-                    status_text.text(f"🏃 処理中... (平均: {avg_processing_time:.1f}ms/frame)")
-        
-        cap.release()
-        
-        # 処理完了
-        progress_bar.progress(100)
-        avg_processing_time = np.mean(processing_times) * 1000
-        status_text.text(f"✅ 処理完了！平均処理時間: {avg_processing_time:.1f}ms/frame")
-        
-        # 統計情報表示
-        st.success("🎉 姿勢推定が完了しました！")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("処理フレーム数", f"{frame_count}")
-        with col2:
-            st.metric("平均処理時間", f"{avg_processing_time:.1f}ms")
-        with col3:
-            estimated_fps = 1000 / avg_processing_time if avg_processing_time > 0 else 0
-            st.metric("推定リアルタイム性能", f"{estimated_fps:.1f} FPS")
-        
-        # 一時ファイルを削除
+        # MediaPipe処理をtry-catchでラップ
         try:
-            os.unlink(video_path)
-        except:
-            pass
-        
+            with mp_pose.Pose(**pose_config) as pose, \
+            mp_hands.Hands(**hands_config) as hands:
+                
+                progress_bar.progress(30)
+                status_text.text("🏃 姿勢推定処理中...")
+                
+                frame_count = 0
+                processing_times = []
+                
+                # フレームごとの処理ループ
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    
+                    start_time = time.time()
+                    
+                    # フレームを指定解像度にリサイズ
+                    frame_resized = cv2.resize(frame, (target_width, target_height))
+                    
+                    # BGRからRGBに変換
+                    rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
+                    
+                    # 姿勢推定
+                    pose_results = pose.process(rgb)
+                    hands_results = hands.process(rgb)
+                    
+                    # 描画
+                    annotated_frame = draw_pose_landmarks(
+                        frame_resized, pose_results, None, hands_results, 
+                        mp_pose, mp_face_mesh, mp_hands, mp_drawing, 
+                        draw_landmarks, draw_connections, draw_face, draw_hands,
+                        landmark_size, connection_thickness
+                    )
+                    
+                    # フレームカウントと進捗更新
+                    frame_count += 1
+                    progress = min(30 + (frame_count / total_frames) * 60, 90)
+                    progress_bar.progress(int(progress))
+                    
+                    # 動画表示更新（一定間隔で）
+                    if frame_count % max(1, total_frames // 50) == 0:  # 最大50回更新
+                        video_placeholder.image(annotated_frame, channels="RGB", use_column_width=True)
+                    
+                    # 処理時間計測
+                    processing_time = time.time() - start_time
+                    processing_times.append(processing_time)
+                    
+                    # ステータス更新（100フレームごと）
+                    if frame_count % 100 == 0:
+                        avg_time = np.mean(processing_times[-100:]) * 1000
+                        status_text.text(f"🏃 処理中... {frame_count}/{total_frames} frames ({avg_time:.1f}ms/frame)")
+                
+                # 最終フレームを表示
+                if 'annotated_frame' in locals():
+                    video_placeholder.image(annotated_frame, channels="RGB", use_column_width=True)
+                
+                cap.release()
+                progress_bar.progress(100)
+                
+                # 統計計算
+                avg_processing_time = np.mean(processing_times) * 1000
+                status_text.text(f"✅ 処理完了！平均処理時間: {avg_processing_time:.1f}ms/frame")
+                
+                # 統計情報表示
+                st.success("🎉 姿勢推定が完了しました！")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("処理フレーム数", f"{frame_count}")
+                with col2:
+                    st.metric("平均処理時間", f"{avg_processing_time:.1f}ms")
+                with col3:
+                    estimated_fps = 1000 / avg_processing_time if avg_processing_time > 0 else 0
+                    st.metric("推定リアルタイム性能", f"{estimated_fps:.1f} FPS")
+                
+                # 一時ファイルを削除
+                try:
+                    os.unlink(video_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            st.error(f"❌ 動画処理中にエラーが発生しました: {e}")
+            st.error(f"エラータイプ: {type(e).__name__}")
+            import traceback
+            st.text("詳細なエラー情報:")
+            st.code(traceback.format_exc())
+            # 一時ファイルクリーンアップ
+            try:
+                cap.release()
+                os.unlink(video_path)
+            except:
+                pass
+                
     except Exception as e:
-        st.error(f"❌ 動画処理中にエラーが発生しました: {e}")
-        st.error(f"エラータイプ: {type(e).__name__}")
+        st.error(f"❌ 全体的なエラーが発生しました: {e}")
         import traceback
-        st.text("詳細なエラー情報:")
         st.code(traceback.format_exc())
         
 elif uploaded_file is not None and not mediapipe_available:
