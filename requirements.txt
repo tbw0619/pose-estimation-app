@@ -1,9 +1,9 @@
 # Streamlit Core
 streamlit>=1.37.0
 
-# Computer Vision
-opencv-python-headless>=4.8.0
-mediapipe>=0.10.0
+# Computer Vision (Streamlit Cloud最適化)
+opencv-python-headless==4.8.1.78
+mediapipe==0.10.14
 
 # Data Processing
-numpy>=1.21.0
+numpy==1.24.3

@@ -1,8 +1,16 @@
 import streamlit as st
 import tempfile
-import cv2
 import os
 import numpy as np
+
+# OpenCV安全インポート（Streamlit Cloud対応）
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError as e:
+    st.error(f"OpenCVのインポートに失敗しました: {e}")
+    st.info("requirements.txtにopencv-python-headlessが含まれていることを確認してください。")
+    CV2_AVAILABLE = False
 
 # MediaPipe インポート（クラウド環境対応）
 try:
@@ -66,6 +74,15 @@ draw_face = st.sidebar.checkbox("首を描画", True, help="肩関節とこめ�
 draw_hands = st.sidebar.checkbox("手を描画", True)
 landmark_size = st.sidebar.slider("関節点サイズ", 1, 10, 3)
 connection_thickness = st.sidebar.slider("骨格線の太さ", 1, 10, 2)
+
+# 必要なライブラリの可用性チェック
+if not CV2_AVAILABLE:
+    st.error("❌ OpenCVが利用できません。アプリを正常に動作させるためにはOpenCVが必要です。")
+    st.stop()
+
+if not MEDIAPIPE_AVAILABLE:
+    st.error("❌ MediaPipeが利用できません。アプリを正常に動作させるためにはMediaPipeが必要です。")
+    st.stop()
 
 try:
     if MEDIAPIPE_AVAILABLE:
