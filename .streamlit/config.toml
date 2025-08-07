@@ -1,0 +1,15 @@
+[server]
+# ファイルアップロードサイズ制限を無制限に設定（大きなファイル対応）
+maxUploadSize = 1000
+
+# CORS設定
+enableCORS = false
+enableXsrfProtection = false
+
+# サーバー設定
+headless = true
+runOnSave = true
+
+[browser]
+# ブラウザ自動起動を無効化
+gatherUsageStats = false

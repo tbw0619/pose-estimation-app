@@ -1,0 +1,13 @@
+# Streamlit Core
+streamlit>=1.37.0
+
+# Computer Vision
+opencv-python-headless>=4.8.0
+mediapipe>=0.10.0
+
+# Data Processing
+numpy>=1.21.0
+
+# Python Standard Libraries (usually included)
+tempfile
+os
