@@ -5,15 +5,14 @@ import cv2
 import numpy as np
 import imageio
 import time
+import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision
 
 # --- Configure cache/tmp dirs early
 os.environ["HOME"] = tempfile.gettempdir()
 os.environ["XDG_CACHE_HOME"] = os.path.join(tempfile.gettempdir(), "cache")
 os.makedirs(os.environ["XDG_CACHE_HOME"], exist_ok=True)
-
-# --- MediaPipe Tasks (no solutions.Pose to avoid package write) ---
-from mediapipe.tasks import python as mp_python
-from mediapipe.tasks.python import vision
 
 st.set_page_config(page_title="Pose Estimation (Tasks, 15s GIF)", page_icon="🧍", layout="wide")
 st.title("🧍 Pose Estimation — MediaPipe Tasks (15s GIF)")
@@ -85,24 +84,21 @@ status = st.empty()
 
 def draw_pose(frame_bgr, landmarks_list):
     h, w = frame_bgr.shape[:2]
-    # Draw simple skeleton lines: if there's at least one pose.
     if not landmarks_list:
         return frame_bgr
-    lm = landmarks_list[0]  # first pose
-    # List of connections based on Mediapip Pose topology (subset)
+    lm = landmarks_list[0]
     CONN = [
-        (11,13),(13,15),  # left arm
-        (12,14),(14,16),  # right arm
-        (11,12),          # shoulders
-        (23,24),          # hips
-        (11,23),(12,24),  # torso
-        (23,25),(25,27),(27,29),(29,31),  # left leg
-        (24,26),(26,28),(28,30),(30,32),  # right leg
+        (11,13),(13,15),
+        (12,14),(14,16),
+        (11,12),
+        (23,24),
+        (11,23),(12,24),
+        (23,25),(25,27),(27,29),(29,31),
+        (24,26),(26,28),(28,30),(30,32),
     ]
     pts = []
-    for i,p in enumerate(lm):
-        x = int(p.x * w)
-        y = int(p.y * h)
+    for p in lm:
+        x = int(p.x * w); y = int(p.y * h)
         pts.append((x,y))
         cv2.circle(frame_bgr,(x,y),2,(0,255,0),-1)
     for a,b in CONN:
@@ -114,8 +110,8 @@ gif_frames = []
 frame_idx = 0
 kept = 0
 last_update = time.time()
+timestamp_ms = 0.0
 
-timestamp_ms = 0
 while frame_idx < frames_to_process:
     ok, frame = cap.read()
     if not ok:
@@ -125,9 +121,9 @@ while frame_idx < frames_to_process:
         frame = cv2.resize(frame, (int(orig_w*scale), int(orig_h*scale)))
 
     if frame_idx % sample_every == 0:
-        # Create an MP Image
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = mp_python.Image(image_format=mp_python.ImageFormat.SRGB, data=rgb)
+        # FIX: use mediapipe.Image rather than mp_python.Image
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = landmarker.detect_for_video(mp_image, int(timestamp_ms))
         annotated = draw_pose(frame.copy(), result.pose_landmarks)
         gif_frames.append(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB))
