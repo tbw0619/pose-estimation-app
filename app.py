@@ -1,18 +1,21 @@
+# --- MUST be the very first lines ---
 import os, tempfile
-# --- Force a writable cache dir before importing mediapipe ---
 mp_cache = os.path.join(tempfile.gettempdir(), "mediapipe_cache")
+os.environ["XDG_CACHE_HOME"] = mp_cache
+os.environ["MEDIAPIPE_CACHE_DIR"] = mp_cache
+os.environ["HOME"] = tempfile.gettempdir()
 os.makedirs(mp_cache, exist_ok=True)
-os.environ.setdefault("XDG_CACHE_HOME", mp_cache)
-os.environ.setdefault("MEDIAPIPE_CACHE_DIR", mp_cache)
-os.environ.setdefault("HOME", tempfile.gettempdir())  # fallback for libs that derive ~/.cache from HOME
+# ------------------------------------
 
 import streamlit as st
 import cv2
 import numpy as np
 import imageio
-import mediapipe as mp
-import tempfile
 import time
+
+# ここより下で初めて mediapipe を import
+import mediapipe as mp
+
 
 st.set_page_config(page_title="Pose Estimation (GIF, 15s)", page_icon="🧍", layout="wide")
 st.title("🧍 Pose Estimation (15s GIF) — MediaPipe × Streamlit (Cache Fix)")
