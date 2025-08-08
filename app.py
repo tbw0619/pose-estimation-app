@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import time
 import mediapipe as mp
+import imageio  # ← 追加
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
@@ -103,23 +104,24 @@ def draw_pose(frame_bgr, landmarks_list):
             cv2.line(frame_bgr, pts[a], pts[b], (255,0,0), 2)
     return frame_bgr
 
-# --- 出力動画設定 ---
-video_path = os.path.join(tempfile.gettempdir(), "pose_tasks.mp4")
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-out_w = int(orig_w * min(1.0, max_video_width / max(orig_w, 1)))
-out_h = int(orig_h * min(1.0, max_video_width / max(orig_w, 1)))
-out = cv2.VideoWriter(video_path, fourcc, video_fps, (out_w, out_h))
+# ===== ここから変更：OpenCVのVideoWriterをやめ、フレームを貯めてH.264で書き出し =====
+frames_rgb = []  # H.264エンコードに渡すRGBフレームを貯める
 
 frame_idx = 0
 kept = 0
 last_update = time.time()
 timestamp_ms = 0.0
 
+# 出力サイズ（リサイズ後の幅×高さ）
+scale = min(1.0, max_video_width / max(orig_w, 1))
+out_w = int(orig_w * scale)
+out_h = int(orig_h * scale)
+
 while frame_idx < frames_to_process:
     ok, frame = cap.read()
     if not ok:
         break
-    if max_video_width < orig_w:
+    if scale < 1.0:
         frame = cv2.resize(frame, (out_w, out_h))
 
     if frame_idx % sample_every == 0:
@@ -127,29 +129,40 @@ while frame_idx < frames_to_process:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = landmarker.detect_for_video(mp_image, int(timestamp_ms))
         annotated = draw_pose(frame.copy(), result.pose_landmarks)
-        out.write(annotated)
+
+        # H.264に渡すためRGBで保存
+        frames_rgb.append(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB))
         kept += 1
+
         if time.time() - last_update > 0.1:
-            status.text(f"Processing… {frame_idx}/{frames_to_process} frames (written {kept})")
+            status.text(f"Processing… {frame_idx}/{frames_to_process} frames (kept {kept})")
             progress.progress(min(100, int(100 * frame_idx / max(1, frames_to_process))))
             last_update = time.time()
+
     frame_idx += 1
     timestamp_ms += 1000.0 / fps
 
 cap.release()
-out.release()
 
 if kept == 0:
     st.error("No frames were processed. Try a different video.")
     st.stop()
 
+# --- imageio-ffmpegでH.264出力（ブラウザ互換：yuv420p） ---
+video_path = os.path.join(tempfile.gettempdir(), "pose_annotated.mp4")
+writer = imageio.get_writer(
+    video_path,
+    fps=video_fps,
+    codec="libx264",
+    quality=8,
+    pixelformat="yuv420p"
+)
+for fr in frames_rgb:
+    writer.append_data(fr)  # RGBのまま渡す
+writer.close()
+
 # --- 再生とダウンロード ---
-st.success(f"Done. {kept} frames -> MP4 at ~{video_fps} FPS")
+st.success(f"Done. {kept} frames -> MP4 at ~{video_fps} FPS (H.264/yuv420p)")
 st.video(video_path)
 with open(video_path, "rb") as f:
-    st.download_button(
-        "Download MP4", 
-        f, 
-        file_name="pose_annotated.mp4", 
-        mime="video/mp4"
-    )
+    st.download_button("Download MP4", f, file_name="pose_annotated.mp4", mime="video/mp4")
