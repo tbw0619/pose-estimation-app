@@ -1,7 +1,8 @@
 streamlit
 opencv-python-headless
-mediapipe
+mediapipe==0.10.14
 numpy
 Pillow
 imageio
 imageio-ffmpeg
+# protobuf pinned by mediapipe; no need to add explicit constraint for 0.10.14
