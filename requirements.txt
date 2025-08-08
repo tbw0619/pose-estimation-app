@@ -1,6 +1,6 @@
-mediapipe==0.10.14
-opencv-python-headless
 streamlit
+opencv-python-headless
+mediapipe==0.10.14
 numpy
 Pillow
 imageio
